@@ -6,8 +6,9 @@ from lightrag.utils import EmbeddingFunc
 import numpy as np
 import json
 import logging
-
-    
+from openai import OpenAI # openai==1.2.0
+ 
+   
 async def llm_model_func(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
@@ -39,13 +40,25 @@ async def test_funcs():
     print("embedding_func: ", result)
 
 
-async def decompse_question(original_question):
+def decompse_question(original_question):
+    client = OpenAI(
+        api_key=os.getenv("UPSTAGE_API_KEY"),
+        base_url="https://api.upstage.ai/v1/solar"
+    )
+     
+    def chat_with_solar(messages):
+        response = client.chat.completions.create(
+            model="solar-pro",
+            messages=messages
+        )
+        return response.choices[0].message.content
+
     decomposition_prompt = (
        # f"The following questionis a multi-hop question. "
         f"Please decompose the question to answer correctly. \n"
         f"When you decompose it and make new following questions,"
         f"you assumed that we do not know the answer of the intermediate question.\n"
-        f"You should show only decompose questions with bullet style without explanation concisely\n"
+        f"You should decompse questions in bullet style directly, without any explanation and extra information.\n"
         f"Question: {original_question}\n"
         f"\n#####################\n"
         f"-Example- \n"
@@ -56,15 +69,23 @@ async def decompse_question(original_question):
         f"Who sang 'Beauty and the Beast' with Celine Dion?\n"
         f"What is the record label for previous answer's person?\n"
     )
-    print(decomposition_prompt)
-    print("\n\n")
-    decomposed_text = await llm_model_func(decomposition_prompt)
-    list_q = [q.strip() for q in decomposed_text.split('\n').lstrip('- ') if q.strip()]
+    #print(decomposition_prompt)
+    #print("\n\n")
+
+    messages=[ { "role": "user", "content": decomposition_prompt } ]
+    response = chat_with_solar(messages)
+
+    list_q = [q.strip() for q in response.split('\n') if q.strip()]
+    list_q = [ item for item in list_q 
+        if not (item.startswith("To find the answer") or item.startswith("To answer the question"))
+    ]
+    list_q = [q.lstrip('- ').strip() for q in list_q]
+    list_q = [q.lstrip('* ').strip() for q in list_q]
     print("decompose question: ", list_q)
     return list_q 
 
 
-async def get_answers_fromlightrag(question_type, idx, list_questions):
+def get_answers_fromlightrag(question_type, idx, list_questions):
     contents_file_path = f'{BASE_DIR}/contents'
     with open(f'{contents_file_path}/{idx}.txt', 'r', encoding='utf-8') as file:
         contents = file.read()
@@ -87,9 +108,8 @@ async def get_answers_fromlightrag(question_type, idx, list_questions):
     if not os.path.exists(WORKING_DIR):
         os.mkdir(WORKING_DIR)
 
-    list_question = await decompse_question(question)
-
-    exit(-1)
+    list_questions = decompse_question(question)
+    #exit(-1)
 
     rag = LightRAG(
         working_dir=WORKING_DIR,
@@ -107,28 +127,32 @@ async def get_answers_fromlightrag(question_type, idx, list_questions):
     #question_type = 'single'
     #question_type = 'multi-hop'
 
-
-    if question_type == 'single':
+    #processed_data = []
+    dic_info ={}
+    dic_info['question'] = question
+    dic_info['answerable'] =answerable 
+    dic_info['answer'] = answer 
+    if question_type == 'all' or question_type == 'single':
         print("\n-----")
         # Perform hybrid search ( naive, local, global, hybrid)
-        model_rps = rag.query(question, param=QueryParam(mode="hybrid"))
+        model_rps = rag.query(dic_info['question'], param=QueryParam(mode="hybrid"))
         print(model_rps)
+        dic_info['a_single'] = model_rps 
 
-        processed_data = []
-        with open(f'{BASE_DIR}/response/{idx}.txt', 'w', encoding='utf-8') as outfile:
-            processed_data.append({"question":question, "answer":answer, "answerable":answerable, "response":model_rps})
-            json.dump(processed_data, outfile, indent=4, ensure_ascii=False)        
-    elif question_type == 'connected':
+    if question_type == 'all' or question_type == 'connected':
         _question = ""
         for q in list_questions:
             if _question != "" : _question += ' And then '
             _question += q 
+        print("question=", _question)
         model_rps = rag.query(_question, param=QueryParam(mode="hybrid"))
-        print(_question)
         print(model_rps)
-    else:
+        dic_info['q_concat'] = _question 
+        dic_info['a_concat'] = model_rps 
+    
+    if question_type == 'all' or question_type == 'multi-hop':
         prev_q = None 
-        for _question in list_question:
+        for _question in list_questions:
             question_orig = _question
             if prev_q != None: 
                 _question += f"\nprevious question is: \n {prev_q}"
@@ -139,29 +163,35 @@ async def get_answers_fromlightrag(question_type, idx, list_questions):
             print("+++")
             prev_q = question_orig
             prev_a =  model_rps
+        dic_info['q_multi'] = list_questions 
+        dic_info['a_multi'] = model_rps
     print("===")
     print(idx, "question=", question)
     print("answerable=", answerable, "answer=", answer)
     print(f"{contents_file_path}/{idx}.txt", len(contents))
     print("===")
 
-async def main():
-    await get_answers_fromlightrag(question_type, idx, list_question)
+    with open(f'{BASE_DIR}/response/{idx}.json', 'w', encoding='utf-8') as outfile:
+        #processed_data.append(dic_info)
+        json.dump([dic_info], outfile, indent=4, ensure_ascii=False)        
 
-if __name__ == '__main__':
-    BASE_DIR = 'exp/musique_ans_train'
-
-    #for idx in range(30):
-    #    if idx != 25:
-    #        continue
+def test_one_problem(idx, question_type = 'all'):
+    question_type = 'all'
     #question_type = 'single'
     #question_type = 'multi-hop'
-    question_type = 'connected'
-    idx = 19 
+    #question_type = 'connected'
     #list_question = [
     #        "Who is the designer of Peter and Paul Fortress?",
     #        "Where did the previous answer's person die?"
     #] 
     list_question = []
+    get_answers_fromlightrag(question_type, idx, list_question)
 
-    asyncio.run(main())
+if __name__ == '__main__':
+    BASE_DIR = 'exp/musique_ans_train'
+
+    for idx in range(100):
+        if idx <= 9:
+            continue
+        test_one_problem(idx)
+
