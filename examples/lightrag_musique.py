@@ -191,7 +191,11 @@ if __name__ == '__main__':
     BASE_DIR = 'exp/musique_ans_train'
 
     for idx in range(100):
-        if idx <= 9:
+        if idx > 0:
             continue
-        test_one_problem(idx)
+        try:
+            test_one_problem(idx)
+        except Exception as e:
+            print(f"Error(idx={idx})= ", e)
+            continue
 
