@@ -8,6 +8,7 @@ def extract_data(WORKING_DIR, json_file_path):
             try:
                 idx += 1
                 data = json.loads(line.strip())
+                qid = data.get("id", "")                
                 paragraphs = data.get("paragraphs", [])
                 question = data.get("question", "")
                 answer = data.get("answer", "")
@@ -21,7 +22,7 @@ def extract_data(WORKING_DIR, json_file_path):
                 print(f"Error decoding JSON: {e}")
                 exit(-1)
 
-
+            print(f"id: {qid}")
             print(f"Question: {question}")
             print(f"Answer: {answer}")
             print(f"Answerable: {answerable}")
@@ -41,11 +42,11 @@ def extract_data(WORKING_DIR, json_file_path):
             # 추출된 데이터를 파일로 저장하려면 아래와 같이 사용 가능
             processed_data = [] 
             with open(f'{WORKING_DIR}/qna/{idx}.txt', 'w', encoding='utf-8') as outfile:
-                processed_data.append({"question":question, "answer":answer, "answerable":answerable})
+                processed_data.append({"id":qid, "question":question, "answer":answer, "answerable":answerable})
                 json.dump(processed_data, outfile, indent=4, ensure_ascii=False)
 
 if __name__=='__main__':
-    BASE_DIR = f"./exp/musique_ans_train"
+    BASE_DIR = f"./exp/musique_ans_train2"
     for d in ['prompt', 'contents', 'qna']:
         WORKING_DIR = f"{BASE_DIR}/{d}"
         if not os.path.exists(WORKING_DIR):

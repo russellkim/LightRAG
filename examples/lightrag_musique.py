@@ -1,20 +1,26 @@
 import os
 import asyncio
 from lightrag import LightRAG, QueryParam
-from lightrag.llm import openai_complete_if_cache, openai_embedding
+from lightrag.llm import openai_complete_if_cache, openai_embedding, gpt_4o_complete, gpt_4o_mini_complete
 from lightrag.utils import EmbeddingFunc
 import numpy as np
 import json
 import logging
 from openai import OpenAI # openai==1.2.0
  
+USE_SOLAR = 0
+#SOLAR_MODEL = "solar-mini"
+SOLAR_MODEL = "solar-pro"
    
 async def llm_model_func(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    print("len(prompt)=", len(prompt))
+    print("prompt=", prompt[:20])
+    #print("len(system_prompt)=", len(system_prompt))
+    #print("len(history_messages)=", len(history_messages))
     return await openai_complete_if_cache(
-        "solar-mini",
-        #"solar-pro",
+        SOLAR_MODEL,
         prompt,
         system_prompt=system_prompt,
         history_messages=history_messages,
@@ -41,17 +47,33 @@ async def test_funcs():
 
 
 def decompse_question(original_question):
-    client = OpenAI(
-        api_key=os.getenv("UPSTAGE_API_KEY"),
-        base_url="https://api.upstage.ai/v1/solar"
-    )
-     
-    def chat_with_solar(messages):
-        response = client.chat.completions.create(
-            model="solar-pro",
-            messages=messages
+    if USE_SOLAR == 1:
+        client = OpenAI(
+            api_key=os.getenv("UPSTAGE_API_KEY"),
+            base_url="https://api.upstage.ai/v1/solar"
         )
-        return response.choices[0].message.content
+         
+        def chat_with_solar(messages):
+            response = client.chat.completions.create(
+                model=SOLAR_MODEL,
+                messages=messages,
+                stream=False
+            )
+            return response.choices[0].message.content
+    else:
+        client = OpenAI(
+            api_key=os.getenv("OPEN_API_KEY")
+            #base_url="https://api.oepnai.com/v1/chat/completions"
+        )
+         
+        def chat_with_solar(messages):
+            response = client.chat.completions.create(
+                #model="gpt-4o-mini",
+                model="gpt-4o",
+                messages=messages,
+                stream=False
+            )
+            return response.choices[0].message.content
 
     decomposition_prompt = (
        # f"The following questionis a multi-hop question. "
@@ -69,8 +91,6 @@ def decompse_question(original_question):
         f"Who sang 'Beauty and the Beast' with Celine Dion?\n"
         f"What is the record label for previous answer's person?\n"
     )
-    #print(decomposition_prompt)
-    #print("\n\n")
 
     messages=[ { "role": "user", "content": decomposition_prompt } ]
     response = chat_with_solar(messages)
@@ -108,18 +128,32 @@ def get_answers_fromlightrag(question_type, idx, list_questions):
     if not os.path.exists(WORKING_DIR):
         os.mkdir(WORKING_DIR)
 
-    list_questions = decompse_question(question)
+    list_questions = []
+    if question_type != 'single':
+        list_questions = decompse_question(question)
     #exit(-1)
 
-    rag = LightRAG(
-        working_dir=WORKING_DIR,
-        llm_model_func=llm_model_func,
-        embedding_func=EmbeddingFunc(
-            embedding_dim=4096,
-            max_token_size=8192,
-            func=embedding_func
+    if USE_SOLAR == 1:
+        print("!!!!! USE SOLAR !!!!!")
+        rag = LightRAG(
+            working_dir=WORKING_DIR,
+            llm_model_func=llm_model_func,
+            embedding_func=EmbeddingFunc(
+                embedding_dim=4096,
+                #max_token_size=8192,
+                max_token_size=2048,
+                func=embedding_func
+            )
         )
-    )
+    else:
+        print("##### USE OPENAI #####")
+        print("##### gpt_4o_mini #####")
+        #print("##### gpt_4o #####")
+        rag = LightRAG(
+            working_dir=WORKING_DIR,
+            llm_model_func=gpt_4o_mini_complete
+            # llm_model_func=gpt_4o_complete
+        )
 
     #print(combined_paragraphs)
     rag.insert(contents)
@@ -176,7 +210,7 @@ def get_answers_fromlightrag(question_type, idx, list_questions):
         json.dump([dic_info], outfile, indent=4, ensure_ascii=False)        
 
 def test_one_problem(idx, question_type = 'all'):
-    question_type = 'all'
+    question_type = 'single'
     #question_type = 'single'
     #question_type = 'multi-hop'
     #question_type = 'connected'
@@ -190,9 +224,10 @@ def test_one_problem(idx, question_type = 'all'):
 if __name__ == '__main__':
     BASE_DIR = 'exp/musique_ans_train'
 
-    for idx in range(100):
-        if idx > 0:
-            continue
+    for idx in range(23):
+        #if idx not in [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]:
+        #if idx not in [31]:
+        #    continue
         try:
             test_one_problem(idx)
         except Exception as e:
