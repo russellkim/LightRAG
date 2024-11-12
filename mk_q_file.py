@@ -22,18 +22,14 @@ def extract_data(WORKING_DIR, json_file_path):
                 print(f"Error decoding JSON: {e}")
                 exit(-1)
 
-            print(f"id: {qid}")
-            print(f"Question: {question}")
-            print(f"Answer: {answer}")
-            print(f"Answerable: {answerable}")
-
-            extracted_data = "please, solve the following [question] based on [text]\n-----\n"
-            extracted_data += f"[question]:{question} \n\n[text]:{combined_paragraphs}"
-
+            #print(f"id: {qid}")
+            #print(f"Question: {question}")
+            #print(f"Answer: {answer}")
+            #print(f"Answerable: {answerable}")
 
             # 추출된 데이터를 파일로 저장하려면 아래와 같이 사용 가능
-            with open(f'{WORKING_DIR}/prompt/{idx}.txt', 'w', encoding='utf-8') as outfile:
-                outfile.write(extracted_data)
+            with open(f'{WORKING_DIR}/src/{idx}.txt', 'w', encoding='utf-8') as outfile:
+                outfile.write(json.dumps(data, ensure_ascii=False))
 
             # 추출된 데이터를 파일로 저장하려면 아래와 같이 사용 가능
             with open(f'{WORKING_DIR}/contents/{idx}.txt', 'w', encoding='utf-8') as outfile:
@@ -45,9 +41,10 @@ def extract_data(WORKING_DIR, json_file_path):
                 processed_data.append({"id":qid, "question":question, "answer":answer, "answerable":answerable})
                 json.dump(processed_data, outfile, indent=4, ensure_ascii=False)
 
+
 if __name__=='__main__':
-    BASE_DIR = f"./exp/musique_ans_train2"
-    for d in ['prompt', 'contents', 'qna']:
+    BASE_DIR = f"./exp/musique_ans_train"
+    for d in ['contents', 'qna', 'src']:
         WORKING_DIR = f"{BASE_DIR}/{d}"
         if not os.path.exists(WORKING_DIR):
             os.mkdir(WORKING_DIR)
